@@ -1,0 +1,118 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") 
+}
+
+// 1. MODEL USER: Quản lý người dùng
+model User {
+  id            String    @id @default(uuid()) // ID nội bộ trong DB
+  clerkId       String?   @unique              // ID mapping với Clerk (Auth)
+  email         String    @unique
+  name          String?
+  role          Role      @default(CUSTOMER)   // Phân quyền: Khách hay Admin
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  orders        Order[]   // Một người có nhiều đơn hàng
+  reviews       Review[]  // Một người có nhiều đánh giá
+}
+
+// Enum cho quyền hạn
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+// 2. MODEL PRODUCT: Sản phẩm công nghệ
+model Product {
+  id            String    @id @default(uuid())
+  name          String
+  slug          String    @unique // Dùng cho SEO URL (vd: iphone-15-pro-max)
+  description   String    @db.Text
+  price         Decimal   @db.Decimal(10, 2) // Dùng Decimal để tính tiền chính xác, không dùng Float
+  originalPrice Decimal?  @db.Decimal(10, 2) // Giá gốc (để hiện giảm giá)
+  inventory     Int       @default(0)        // Quản lý kho
+  images        String[]  // Postgres hỗ trợ lưu mảng String (URL ảnh)
+  isFeatured    Boolean   @default(false)    // Sản phẩm nổi bật (hiện trang chủ)
+  isArchived    Boolean   @default(false)    // Ẩn sản phẩm thay vì xóa
+  
+  categoryId    String
+  category      Category  @relation(fields: [categoryId], references: [id])
+  
+  orderItems    OrderItem[]
+  reviews       Review[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// 3. MODEL CATEGORY: Danh mục (Laptop, Phone, Tablet...)
+model Category {
+  id        String    @id @default(uuid())
+  name      String
+  slug      String    @unique
+  products  Product[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+// 4. MODEL ORDER: Đơn hàng
+model Order {
+  id            String      @id @default(uuid())
+  userId        String?     // Có thể null nếu cho phép mua không cần đăng nhập (Guest)
+  user          User?       @relation(fields: [userId], references: [id])
+  
+  orderItems    OrderItem[] 
+  
+  status        OrderStatus @default(PENDING)
+  totalAmount   Decimal     @db.Decimal(10, 2)
+  isPaid        Boolean     @default(false)
+  
+  phone         String      @default("")
+  address       String      @default("")
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+enum OrderStatus {
+  PENDING     // Chờ xác nhận
+  PROCESSING  // Đang xử lý
+  SHIPPED     // Đang giao
+  DELIVERED   // Đã giao
+  CANCELLED   // Đã hủy
+}
+
+// 5. MODEL ORDER ITEM: Chi tiết từng món trong đơn hàng
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  
+  quantity  Int     @default(1)
+  price     Decimal @db.Decimal(10, 2) // Lưu giá tại thời điểm mua (đề phòng giá SP thay đổi sau này)
+}
+
+// 6. MODEL REVIEW: Đánh giá sản phẩm
+model Review {
+  id        String   @id @default(uuid())
+  rating    Int      // 1-5 sao
+  comment   String?
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  
+  createdAt DateTime @default(now())
+}
